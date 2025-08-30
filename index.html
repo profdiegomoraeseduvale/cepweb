@@ -64,6 +64,7 @@
 
     <!-- aba texto compilado -->
     <div id="compilado" class="tab-content">
+      <button id="copiar" class="secondary" style="margin-bottom:8px;">Copiar para área de transferência</button>
       <textarea id="saida" placeholder="Clique em &quot;Gerar texto&quot; para compilar as seleções…"></textarea>
     </div>
 
@@ -205,6 +206,15 @@ async function init(){
   updateCount();
 }
 init();
+document.getElementById('copiar').addEventListener('click', () => {
+  const texto = document.getElementById('saida').value;
+  if(!texto) return;
+  navigator.clipboard.writeText(texto).then(() => {
+    alert('Texto copiado para a área de transferência!');
+  }).catch(err => {
+    console.error('Erro ao copiar:', err);
+  });
+});
 </script>
 </body>
 </html>
