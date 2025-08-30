@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Banco de Pendências (Conep) – Seleção e Compilação</title>
+<style>
+  :root{
+    --bg:#0b0f14; --card:#121821; --muted:#8aa0b2; --fg:#e9f0f7; --accent:#4da3ff; --border:#1e2937;
+  }
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
+  .container{max-width:1200px;margin:0 auto;padding:24px}
+  h1{font-size:28px;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 20px}
+  .controls{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 16px}
+  input[type="search"], select{background:#0e1520;color:var(--fg);border:1px solid var(--border);border-radius:12px;padding:10px 12px;min-width:240px;outline:none}
+  button{background:var(--accent);color:#00152b;border:0;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;box-shadow:0 6px 16px rgba(77,163,255,.25)}
+  button.secondary{background:#0e1520;color:var(--fg);border:1px solid var(--border);box-shadow:none}
+  .grid{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
+  details.section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px}
+  details > summary{cursor:pointer;list-style:none;font-weight:700}
+  details > summary::-webkit-details-marker{display:none}
+  .section h2{font-size:18px;margin:4px 0}
+  .subsection{margin:10px 0 6px;padding:10px;border-radius:12px;background:#0f1722;border:1px solid var(--border)}
+  .subsection h3{margin:0 0 6px;font-size:15px;color:#bcd5e6}
+  .item{display:flex;align-items:flex-start;gap:8px;padding:8px;border-radius:8px}
+  .item:hover{background:#0b1320}
+  .item input{margin-top:4px}
+  textarea#saida{width:100%;height:280px;border-radius:12px;border:1px solid var(--border);background:#0e1520;color:var(--fg);padding:12px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
+  .sticky{position:sticky;top:8px}
+  .footer{margin-top:16px;color:var(--muted);font-size:13px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;background:#0e1520;border:1px solid var(--border);color:#bcd5e6;margin-left:8px;font-weight:600}
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Banco de Pendências (Conep)</h1>
+    <p class="sub">Selecione as pendências por seção/subseção e gere um texto final numerado contendo as opções escolhidas.</p>
+
+    <div class="controls">
+      <input id="busca" type="search" placeholder="Buscar por palavra-chave (ex.: TCLE, cronograma, riscos)…" />
+      <select id="filtroSec"></select>
+      <button id="limpar" class="secondary">Limpar seleções</button>
+      <button id="gerar">Gerar texto</button>
+      <span id="contagem" class="tag">0 selecionadas</span>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <h2 style="margin-top:24px">Texto compilado</h2>
+    <textarea id="saida" placeholder="Clique em &quot;Gerar texto&quot; para compilar as seleções…"></textarea>
+
+    <div class="footer">
+      <p>Este aplicativo foi gerado automaticamente a partir do documento oficial em PDF. Use a busca e os filtros para localizar conteúdos específicos.</p>
+    </div>
+  </div>
+
+<script>
+const state = { data: [], selecionadas: new Set(), filtro: 'todas', query: '' };
+
+function slugify(s){
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+}
+
+function render(){
+  const grid = document.getElementById('grid');
+  grid.innerHTML='';
+  const q = state.query.trim().toLowerCase();
+  const filtro = state.filtro;
+  const seccoes = (filtro==='todas' ? state.data : state.data.filter(s=>slugify(s.section)===filtro));
+
+  seccoes.forEach(sec => {
+    const details = document.createElement('details');
+    details.className = 'section';
+    details.open = true;
+    const summary = document.createElement('summary');
+    const h2 = document.createElement('h2');
+    h2.textContent = sec.section;
+    summary.appendChild(h2);
+    details.appendChild(summary);
+
+    sec.subsections.forEach(sub => {
+      // Filtrar por busca
+      const blocoTxt = [sub.subtitle, ...sub.items].join(' ').toLowerCase();
+      if(q && !blocoTxt.includes(q)) return;
+
+      const div = document.createElement('div');
+      div.className = 'subsection';
+      const h3 = document.createElement('h3');
+      h3.textContent = sub.subtitle;
+      div.appendChild(h3);
+
+      sub.items.forEach((txt, idx) => {
+        const id = `${slugify(sec.section)}__${slugify(sub.subtitle)}__${idx}`;
+        const wrap = document.createElement('label');
+        wrap.className = 'item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = id;
+        cb.dataset.section = sec.section;
+        cb.dataset.subtitle = sub.subtitle;
+        cb.dataset.index = idx;
+        cb.addEventListener('change', (e)=>{
+          if(e.target.checked) state.selecionadas.add(id); else state.selecionadas.delete(id);
+          updateCount();
+        });
+        if(state.selecionadas.has(id)) cb.checked = true;
+
+        const p = document.createElement('div');
+        p.textContent = txt;
+
+        wrap.appendChild(cb);
+        wrap.appendChild(p);
+        div.appendChild(wrap);
+      });
+
+      details.appendChild(div);
+    });
+
+    grid.appendChild(details);
+  });
+}
+
+function updateCount(){
+  const cont = document.getElementById('contagem');
+  cont.textContent = `${state.selecionadas.size} selecionadas`;
+}
+
+function gerarTexto(){
+  const escolhidas = Array.from(state.selecionadas.values());
+  const linhas = [];
+  let secNum = 0;
+
+  // Agrupar por seção e subseção
+  const agrupadas = {};
+
+  escolhidas.forEach(id => {
+    const [secSlug, subSlug, idx] = id.split('__');
+    const sec = state.data.find(s => slugify(s.section) === secSlug);
+    if(!sec) return;
+    const sub = sec.subsections.find(s => slugify(s.subtitle) === subSlug);
+    if(!sub) return;
+
+    if(!agrupadas[sec.section]) agrupadas[sec.section] = {};
+    if(!agrupadas[sec.section][sub.subtitle]) agrupadas[sec.section][sub.subtitle] = [];
+    agrupadas[sec.section][sub.subtitle].push(sub.items[Number(idx)]);
+  });
+
+  // Gerar texto numerado
+  Object.keys(agrupadas).forEach((secTitle, i) => {
+    secNum = i + 1;
+    linhas.push(`${secNum} ${secTitle}`);
+
+    const subsecs = agrupadas[secTitle];
+    let subNum = 0;
+    Object.keys(subsecs).forEach(subTitle => {
+      subNum++;
+      linhas.push(`\n${secNum}.${subNum} ${subTitle}`);
+      const itens = subsecs[subTitle];
+      itens.forEach((txt, idx) => {
+        linhas.push(`${secNum}.${subNum}.${idx+1} ${txt}`);
+      });
+    });
+    linhas.push(''); // espaço entre seções
+  });
+
+  document.getElementById('saida').value = linhas.join("\n");
+}
+
+async function init(){
+  const res = await fetch('pendencias_conep.json');
+  state.data = await res.json();
+
+  // Popular filtro de seções
+  const filtro = document.getElementById('filtroSec');
+  filtro.innerHTML = '<option value="todas">Todas as seções</option>' + state.data.map(s=>`<option value="${slugify(s.section)}">${s.section}</option>`).join('');
+  filtro.addEventListener('change', e=>{ state.filtro = e.target.value; render(); });
+
+  document.getElementById('busca').addEventListener('input', e=>{ state.query = e.target.value; render(); });
+  document.getElementById('gerar').addEventListener('click', gerarTexto);
+  document.getElementById('limpar').addEventListener('click', ()=>{ state.selecionadas.clear(); render(); updateCount(); });
+
+  render();
+  updateCount();
+}
+init();
+</script>
+</body>
+</html>
