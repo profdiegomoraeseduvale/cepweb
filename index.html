@@ -17,7 +17,13 @@
   button{background:var(--accent);color:#00152b;border:0;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;box-shadow:0 6px 16px rgba(77,163,255,.25)}
   button.secondary{background:#0e1520;color:var(--fg);border:1px solid var(--border);box-shadow:none}
   .grid{display:grid;grid-template-columns:1fr;gap:16px}
-  
+
+  /* abas */
+  .tabs {display:flex;gap:8px;margin-bottom:16px;}
+  .tab-link {padding:10px 16px;border:none;border-radius:12px 12px 0 0;background:#0e1520;color:var(--fg);cursor:pointer;font-weight:600;}
+  .tab-link.active {background:var(--accent);color:#00152b;}
+  .tab-content {display:none;}
+
   details.section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px}
   details > summary{cursor:pointer;list-style:none;font-weight:700}
   details > summary::-webkit-details-marker{display:none}
@@ -38,26 +44,34 @@
     <h1>Banco de Pendências (Conep)</h1>
     <p class="sub">Selecione as pendências por seção/subseção e gere um texto final numerado contendo as opções escolhidas.</p>
 
-    <div class="controls">
-      <input id="busca" type="search" placeholder="Buscar por palavra-chave (ex.: TCLE, cronograma, riscos)…" />
-      <select id="filtroSec"></select>
-      <button id="limpar" class="secondary">Limpar seleções</button>
-      <button id="gerar">Gerar texto</button>
-      <span id="contagem" class="tag">0 selecionadas</span>
+    <!-- abas -->
+    <div class="tabs">
+      <button class="tab-link active" data-tab="selecionar">Pendências</button>
+      <button class="tab-link" data-tab="compilado">Texto compilado</button>
     </div>
 
-    <div class="grid" id="grid"></div>
-
-    <h2 style="margin-top:24px">Texto compilado</h2>
-    <textarea id="saida" placeholder="Clique em &quot;Gerar texto&quot; para compilar as seleções…"></textarea>
-
-    <div class="footer">
-      
+    <!-- aba seleção -->
+    <div id="selecionar" class="tab-content" style="display:block">
+      <div class="controls">
+        <input id="busca" type="search" placeholder="Buscar por palavra-chave…" />
+        <select id="filtroSec"></select>
+        <button id="limpar" class="secondary">Limpar seleções</button>
+        <button id="gerar">Gerar texto</button>
+        <span id="contagem" class="tag">0 selecionadas</span>
+      </div>
+      <div class="grid" id="grid"></div>
     </div>
+
+    <!-- aba texto compilado -->
+    <div id="compilado" class="tab-content">
+      <textarea id="saida" placeholder="Clique em &quot;Gerar texto&quot; para compilar as seleções…"></textarea>
+    </div>
+
+    <div class="footer"></div>
   </div>
 
 <script>
-const state = { data: [], selecionadas: new Set(), filtro: 'todas', query: '' };
+const state = { data: [], selecionadas: new Set(), filtro: '', query: '' };
 
 function slugify(s){
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
@@ -68,7 +82,7 @@ function render(){
   grid.innerHTML='';
   const q = state.query.trim().toLowerCase();
   const filtro = state.filtro;
-  const seccoes = (filtro==='todas' ? state.data : state.data.filter(s=>slugify(s.section)===filtro));
+  const seccoes = state.data.filter(s=>slugify(s.section)===filtro);
 
   seccoes.forEach(sec => {
     const details = document.createElement('details');
@@ -81,7 +95,6 @@ function render(){
     details.appendChild(summary);
 
     sec.subsections.forEach(sub => {
-      // Filtrar por busca
       const blocoTxt = [sub.subtitle, ...sub.items].join(' ').toLowerCase();
       if(q && !blocoTxt.includes(q)) return;
 
@@ -131,8 +144,6 @@ function gerarTexto(){
   const escolhidas = Array.from(state.selecionadas.values());
   const linhas = [];
   let secNum = 0;
-
-  // Agrupar por seção e subseção
   const agrupadas = {};
 
   escolhidas.forEach(id => {
@@ -147,11 +158,9 @@ function gerarTexto(){
     agrupadas[sec.section][sub.subtitle].push(sub.items[Number(idx)]);
   });
 
-  // Gerar texto numerado
   Object.keys(agrupadas).forEach((secTitle, i) => {
     secNum = i + 1;
     linhas.push(`${secNum} ${secTitle}`);
-
     const subsecs = agrupadas[secTitle];
     let subNum = 0;
     Object.keys(subsecs).forEach(subTitle => {
@@ -162,19 +171,30 @@ function gerarTexto(){
         linhas.push(`${secNum}.${subNum}.${idx+1} ${txt}`);
       });
     });
-    linhas.push(''); // espaço entre seções
+    linhas.push('');
   });
 
   document.getElementById('saida').value = linhas.join("\n");
 }
 
+// alternar abas
+document.querySelectorAll('.tab-link').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(c => c.style.display='none');
+    document.getElementById(btn.dataset.tab).style.display='block';
+  });
+});
+
 async function init(){
   const res = await fetch('pendencias_conep.json');
   state.data = await res.json();
 
-  // Popular filtro de seções
+  // popular filtro apenas com seções
   const filtro = document.getElementById('filtroSec');
-  filtro.innerHTML = '<option value="todas">Todas as seções</option>' + state.data.map(s=>`<option value="${slugify(s.section)}">${s.section}</option>`).join('');
+  filtro.innerHTML = state.data.map(s=>`<option value="${slugify(s.section)}">${s.section}</option>`).join('');
+  if(state.data[0]) state.filtro = slugify(state.data[0].section);
   filtro.addEventListener('change', e=>{ state.filtro = e.target.value; render(); });
 
   document.getElementById('busca').addEventListener('input', e=>{ state.query = e.target.value; render(); });
